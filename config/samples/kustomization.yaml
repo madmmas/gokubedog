@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- watchdog_v1alpha1_policyprofile.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

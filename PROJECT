@@ -8,4 +8,14 @@ layout:
 - go.kubebuilder.io/v4
 projectName: gokubedog
 repo: github.com/madmmas/gokubedog
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: bizaikube.io
+  group: watchdog
+  kind: PolicyProfile
+  path: github.com/madmmas/gokubedog/api/v1alpha1
+  version: v1alpha1
 version: "3"
