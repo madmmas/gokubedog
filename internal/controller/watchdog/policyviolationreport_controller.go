@@ -31,6 +31,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+var slackWebhookURL = os.Getenv("SLACK_WEBHOOK_URL")
+
 // PolicyViolationReportReconciler reconciles a PolicyViolationReport object
 type PolicyViolationReportReconciler struct {
 	client.Client
@@ -66,15 +68,14 @@ func (r *PolicyViolationReportReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, nil
 	}
 
-	webhook := os.Getenv("SLACK_WEBHOOK_URL")
-	if webhook == "" {
+	if slackWebhookURL == "" {
 		log.Info("SLACK_WEBHOOK_URL not set, skipping notification")
 		return ctrl.Result{}, nil
 	}
 
 	msg := formatSlackMessage(&report)
 
-	if err := postToSlack(webhook, msg); err != nil {
+	if err := postToSlack(slackWebhookURL, msg); err != nil {
 		log.Error(err, "failed to send alert")
 		return ctrl.Result{}, err
 	}

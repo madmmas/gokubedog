@@ -164,4 +164,76 @@ var _ = Describe("PolicyProfile Controller", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Consistently(func() int { return len(getReports()) }, 2*time.Second).Should(Equal(0))
 	})
+
+	It("should not create duplicate PolicyViolationReports for the same drift", func() {
+		controllerReconciler := &PolicyProfileReconciler{
+			Client:  k8sClient,
+			Scheme:  k8sClient.Scheme(),
+			DynClnt: dynamic.NewForConfigOrDie(cfg),
+		}
+		createPolicyProfile(map[string]string{"foo": "bar"}, "NetworkPolicy", ns)
+		createNetworkPolicy("np-drift", map[string]string{"foo": "not-bar"})
+		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+		Expect(err).NotTo(HaveOccurred())
+		// Run reconcile again
+		_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+		Expect(err).NotTo(HaveOccurred())
+		By("Expecting only one violation report to be created")
+		Consistently(func() int { return len(getReports()) }, 2*time.Second).Should(Equal(1))
+	})
+
+	It("should create multiple PolicyViolationReports for multiple resources with drift", func() {
+		controllerReconciler := &PolicyProfileReconciler{
+			Client:  k8sClient,
+			Scheme:  k8sClient.Scheme(),
+			DynClnt: dynamic.NewForConfigOrDie(cfg),
+		}
+		createPolicyProfile(map[string]string{"foo": "bar"}, "NetworkPolicy", ns)
+		createNetworkPolicy("np-drift1", map[string]string{"foo": "not-bar"})
+		createNetworkPolicy("np-drift2", map[string]string{"foo": "baz"})
+		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+		Expect(err).NotTo(HaveOccurred())
+		By("Expecting two violation reports to be created")
+		Eventually(func() int { return len(getReports()) }, 5*time.Second).Should(Equal(2))
+	})
+
+	It("should match resources using wildcard namespace pattern", func() {
+		controllerReconciler := &PolicyProfileReconciler{
+			Client:  k8sClient,
+			Scheme:  k8sClient.Scheme(),
+			DynClnt: dynamic.NewForConfigOrDie(cfg),
+		}
+		// Create a profile with namespace pattern "def*"
+		createPolicyProfile(map[string]string{"foo": "bar"}, "NetworkPolicy", "def*")
+		createNetworkPolicy("np-drift", map[string]string{"foo": "not-bar"})
+		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+		Expect(err).NotTo(HaveOccurred())
+		Eventually(func() int { return len(getReports()) }, 5*time.Second).Should(Equal(1))
+	})
+
+	It("should handle empty policy and not create a report", func() {
+		controllerReconciler := &PolicyProfileReconciler{
+			Client:  k8sClient,
+			Scheme:  k8sClient.Scheme(),
+			DynClnt: dynamic.NewForConfigOrDie(cfg),
+		}
+		createPolicyProfile(map[string]string{}, "NetworkPolicy", ns)
+		createNetworkPolicy("np-any", map[string]string{"foo": "bar"})
+		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+		Expect(err).NotTo(HaveOccurred())
+		Consistently(func() int { return len(getReports()) }, 2*time.Second).Should(Equal(0))
+	})
+
+	It("should handle resource with empty labels and create a report if policy is non-empty", func() {
+		controllerReconciler := &PolicyProfileReconciler{
+			Client:  k8sClient,
+			Scheme:  k8sClient.Scheme(),
+			DynClnt: dynamic.NewForConfigOrDie(cfg),
+		}
+		createPolicyProfile(map[string]string{"foo": "bar"}, "NetworkPolicy", ns)
+		createNetworkPolicy("np-empty-labels", map[string]string{})
+		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+		Expect(err).NotTo(HaveOccurred())
+		Eventually(func() int { return len(getReports()) }, 5*time.Second).Should(Equal(1))
+	})
 })
