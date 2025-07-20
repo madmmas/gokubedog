@@ -1,0 +1,12 @@
+apiVersion: watchdog.bizaikube.io/v1alpha1
+kind: PolicyProfile
+metadata:
+  name: deployment-security-policy
+spec:
+  match:
+    kind: Deployment
+    namespace: prod-*
+  policy:
+    security.kubernetes.io/run-as-non-root: "true"
+    security.kubernetes.io/read-only-root-filesystem: "true"
+    app.kubernetes.io/environment: "production" 

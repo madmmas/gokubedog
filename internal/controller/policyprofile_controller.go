@@ -25,6 +25,7 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -38,11 +39,72 @@ type PolicyProfileReconciler struct {
 	client.Client
 	Scheme  *runtime.Scheme
 	DynClnt dynamic.Interface
+	// Cache for discovered API resources
+	apiResources map[string]schema.GroupVersionResource
+	// Discovery client for dynamic API discovery
+	discoveryClient discovery.DiscoveryInterface
 }
 
 // +kubebuilder:rbac:groups=watchdog.bizaikube.io,resources=policyprofiles,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=watchdog.bizaikube.io,resources=policyprofiles/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=watchdog.bizaikube.io,resources=policyprofiles/finalizers,verbs=update
+
+// discoverGVRFromKind attempts to discover the GVR for a kind dynamically
+func (r *PolicyProfileReconciler) discoverGVRFromKind(ctx context.Context, kind string) (schema.GroupVersionResource, error) {
+	// First try the static mapping
+	if gvr, err := GetGVRFromKind(kind); err == nil {
+		return gvr, nil
+	}
+
+	// If not found in static mapping, try to discover dynamically
+	if r.apiResources == nil {
+		r.apiResources = make(map[string]schema.GroupVersionResource)
+	}
+
+	// Check if we already discovered this kind
+	if gvr, exists := r.apiResources[kind]; exists {
+		return gvr, nil
+	}
+
+	// Get the discovery client to discover API resources
+	if r.discoveryClient == nil {
+		return schema.GroupVersionResource{}, fmt.Errorf("discovery client not initialized")
+	}
+
+	// Get all API groups
+	apiGroups, err := r.discoveryClient.ServerGroups()
+	if err != nil {
+		return schema.GroupVersionResource{}, fmt.Errorf("failed to get server groups: %w", err)
+	}
+
+	// Search through all API groups for the kind
+	for _, apiGroup := range apiGroups.Groups {
+		for _, version := range apiGroup.Versions {
+			// Get API resources for this group version
+			apiResources, err := r.discoveryClient.ServerResourcesForGroupVersion(version.GroupVersion)
+			if err != nil {
+				// Skip if we can't get resources for this group version
+				continue
+			}
+
+			// Look for the kind in this group version
+			for _, resource := range apiResources.APIResources {
+				if resource.Kind == kind {
+					gvr := schema.GroupVersionResource{
+						Group:    apiGroup.Name,
+						Version:  version.Version,
+						Resource: resource.Name,
+					}
+					// Cache the result
+					r.apiResources[kind] = gvr
+					return gvr, nil
+				}
+			}
+		}
+	}
+
+	return schema.GroupVersionResource{}, fmt.Errorf("kind %s not found in any API group", kind)
+}
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -62,16 +124,18 @@ func (r *PolicyProfileReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Step 1: Derive GroupVersionResource for resource kind
-	// kind := profile.Spec.Match.Kind
+	// Step 1: Derive GroupVersionResource for resource kind dynamically
+	kind := profile.Spec.Match.Kind
 	nsPattern := profile.Spec.Match.Namespace
 	desiredPolicy := profile.Spec.Policy
 
-	gvr := schema.GroupVersionResource{
-		Group:    "networking.k8s.io",
-		Version:  "v1",
-		Resource: "networkpolicies", // TODO: map kind → resource name dynamically
+	gvr, err := r.discoverGVRFromKind(ctx, kind)
+	if err != nil {
+		l.Error(err, "unsupported resource kind", "kind", kind)
+		return ctrl.Result{}, err
 	}
+
+	l.Info("Processing PolicyProfile", "kind", kind, "gvr", gvr, "namespacePattern", nsPattern)
 
 	// Step 2: List all matching resources
 	resList, err := r.DynClnt.Resource(gvr).Namespace("").List(ctx, v1.ListOptions{})
@@ -125,9 +189,7 @@ func detectDrift(actualLabels map[string]string, desired map[string]string) map[
 func (r *PolicyProfileReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	r.DynClnt = dynamic.NewForConfigOrDie(mgr.GetConfig())
-	// return ctrl.NewControllerManagedBy(mgr).
-	//     For(&watchdogv1alpha1.PolicyProfile{}).
-	//     Complete(r)
+	r.discoveryClient = discovery.NewDiscoveryClientForConfigOrDie(mgr.GetConfig())
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&watchdogv1alpha1.PolicyProfile{}).

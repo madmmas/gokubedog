@@ -1,0 +1,11 @@
+apiVersion: watchdog.bizaikube.io/v1alpha1
+kind: PolicyProfile
+metadata:
+  name: pod-security-policy
+spec:
+  match:
+    kind: Pod
+    namespace: default
+  policy:
+    security.kubernetes.io/psp: "restricted"
+    app.kubernetes.io/managed-by: "policy-controller" 

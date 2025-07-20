@@ -23,11 +23,13 @@ import (
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/discovery"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	watchdogv1alpha1 "github.com/madmmas/gokubedog/api/v1alpha1"
+	"k8s.io/client-go/dynamic"
 )
 
 var _ = Describe("PolicyProfile Controller", func() {
@@ -51,7 +53,15 @@ var _ = Describe("PolicyProfile Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: watchdogv1alpha1.PolicyProfileSpec{
+						Match: watchdogv1alpha1.MatchSpec{
+							Kind:      "Pod",
+							Namespace: "default",
+						},
+						Policy: map[string]string{
+							"security.kubernetes.io/psp": "restricted",
+						},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
@@ -73,7 +83,17 @@ var _ = Describe("PolicyProfile Controller", func() {
 				Scheme: k8sClient.Scheme(),
 			}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+			// Initialize the discovery client for testing
+			discoveryClient, err := discovery.NewDiscoveryClientForConfig(cfg)
+			Expect(err).NotTo(HaveOccurred())
+			controllerReconciler.discoveryClient = discoveryClient
+
+			// Initialize the dynamic client for testing
+			dynamicClient, err := dynamic.NewForConfig(cfg)
+			Expect(err).NotTo(HaveOccurred())
+			controllerReconciler.DynClnt = dynamicClient
+
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
