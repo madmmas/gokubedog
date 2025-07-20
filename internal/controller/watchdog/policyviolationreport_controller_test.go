@@ -73,9 +73,9 @@ var _ = Describe("PolicyViolationReport Controller", func() {
 		}
 		_ = cl.Create(context.Background(), report)
 		// Patch the webhook variable to a dummy value for the test
-		oldWebhook := slackWebhookURL
-		slackWebhookURL = "http://dummy-webhook"
-		defer func() { slackWebhookURL = oldWebhook }()
+		oldWebhook := SlackWebhookURL
+		SlackWebhookURL = "http://dummy-webhook"
+		defer func() { SlackWebhookURL = oldWebhook }()
 		// Mock HTTP transport
 		originalTransport := http.DefaultTransport
 		http.DefaultTransport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {

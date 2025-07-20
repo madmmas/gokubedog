@@ -114,9 +114,11 @@ func (r *PolicyProfileReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 					}
 				}
 				if found {
+					l.Info("Duplicate report found, skipping creation")
 					continue // Skip creating duplicate report
 				}
 			}
+
 			// Emit PolicyViolationReport
 			report := &watchdogv1alpha1.PolicyViolationReport{
 				ObjectMeta: metav1.ObjectMeta{
@@ -138,10 +140,11 @@ func (r *PolicyProfileReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				},
 			}
 
+			l.Info("Creating PolicyViolationReport", "resource", item.GetName(), "namespace", item.GetNamespace())
 			if err := r.Client.Create(ctx, report); err != nil {
 				l.Error(err, "unable to create PolicyViolationReport")
 			} else {
-				l.Info("Created PolicyViolationReport", "name", report.Name)
+				l.Info("Created PolicyViolationReport", "name", report.Name, "namespace", report.Namespace)
 			}
 		}
 	}

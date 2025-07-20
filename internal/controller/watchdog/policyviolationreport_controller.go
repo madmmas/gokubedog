@@ -31,7 +31,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-var slackWebhookURL = os.Getenv("SLACK_WEBHOOK_URL")
+var SlackWebhookURL = os.Getenv("SLACK_WEBHOOK_URL")
 
 // PolicyViolationReportReconciler reconciles a PolicyViolationReport object
 type PolicyViolationReportReconciler struct {
@@ -56,6 +56,7 @@ func (r *PolicyViolationReportReconciler) Reconcile(ctx context.Context, req ctr
 	l := logf.FromContext(ctx)
 
 	log := l.WithValues("violation", req.NamespacedName)
+	log.Info("PolicyViolationReport controller triggered", "request", req.NamespacedName)
 
 	var report v1alpha1.PolicyViolationReport
 	if err := r.Get(ctx, req.NamespacedName, &report); err != nil {
@@ -63,19 +64,24 @@ func (r *PolicyViolationReportReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	log.Info("Found PolicyViolationReport", "name", report.Name, "annotations", report.Annotations)
+
 	// Avoid duplicate notifications
 	if report.Annotations != nil && report.Annotations["notified"] == "true" {
+		log.Info("Report already notified, skipping")
 		return ctrl.Result{}, nil
 	}
 
-	if slackWebhookURL == "" {
+	log.Info("Processing new report", "webhook", SlackWebhookURL)
+
+	if SlackWebhookURL == "" {
 		log.Info("SLACK_WEBHOOK_URL not set, skipping notification")
 		return ctrl.Result{}, nil
 	}
 
 	msg := formatSlackMessage(&report)
 
-	if err := postToSlack(slackWebhookURL, msg); err != nil {
+	if err := postToSlack(SlackWebhookURL, msg); err != nil {
 		log.Error(err, "failed to send alert")
 		return ctrl.Result{}, err
 	}
@@ -87,7 +93,11 @@ func (r *PolicyViolationReportReconciler) Reconcile(ctx context.Context, req ctr
 		report.Annotations = map[string]string{}
 	}
 	report.Annotations["notified"] = "true"
-	_ = r.Update(ctx, &report)
+	if err := r.Update(ctx, &report); err != nil {
+		log.Error(err, "failed to update report with notified annotation")
+		return ctrl.Result{}, err
+	}
+	log.Info("Updated report with notified annotation")
 
 	return ctrl.Result{}, nil
 }
