@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -77,8 +78,13 @@ var _ = Describe("PolicyProfile Controller", func() {
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+
+			By("Expecting a violation report to be created")
+			Eventually(func() int {
+				var reports watchdogv1alpha1.PolicyViolationReportList
+				_ = k8sClient.List(ctx, &reports)
+				return len(reports.Items)
+			}, 5*time.Second).Should(Equal(1))
 		})
 	})
 })
