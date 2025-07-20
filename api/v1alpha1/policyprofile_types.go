@@ -23,13 +23,15 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// MatchSpec defines the match criteria for a policy profile.
+type MatchSpec struct {
+	Kind      string `json:"kind"`
+	Namespace string `json:"namespace"`
+}
+
 // PolicyProfileSpec defines the desired state of PolicyProfile.
 type PolicyProfileSpec struct {
-	Match struct {
-		Kind      string `json:"kind"`
-		Namespace string `json:"namespace"`
-	} `json:"match"`
-
+	Match  MatchSpec         `json:"match"`
 	Policy map[string]string `json:"policy,omitempty"`
 }
 
