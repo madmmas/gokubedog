@@ -17,8 +17,14 @@ limitations under the License.
 package watchdog
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
 
+	"github.com/madmmas/gokubedog/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -45,18 +51,80 @@ type PolicyViolationReportReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
 func (r *PolicyViolationReportReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
+	l := logf.FromContext(ctx)
 
-	// TODO(user): your logic here
+	log := l.WithValues("violation", req.NamespacedName)
+
+	var report v1alpha1.PolicyViolationReport
+	if err := r.Get(ctx, req.NamespacedName, &report); err != nil {
+		log.Error(err, "unable to fetch report")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	// Avoid duplicate notifications
+	if report.Annotations != nil && report.Annotations["notified"] == "true" {
+		return ctrl.Result{}, nil
+	}
+
+	webhook := os.Getenv("SLACK_WEBHOOK_URL")
+	if webhook == "" {
+		log.Info("SLACK_WEBHOOK_URL not set, skipping notification")
+		return ctrl.Result{}, nil
+	}
+
+	msg := formatSlackMessage(&report)
+
+	if err := postToSlack(webhook, msg); err != nil {
+		log.Error(err, "failed to send alert")
+		return ctrl.Result{}, err
+	}
+
+	log.Info("Slack alert sent successfully")
+
+	// Mark as notified
+	if report.Annotations == nil {
+		report.Annotations = map[string]string{}
+	}
+	report.Annotations["notified"] = "true"
+	_ = r.Update(ctx, &report)
 
 	return ctrl.Result{}, nil
+}
+
+func formatSlackMessage(r *v1alpha1.PolicyViolationReport) string {
+	driftDetails, _ := json.MarshalIndent(r.Spec.Drift, "", "  ")
+
+	return fmt.Sprintf(
+		"*🚨 MADMMAS: Policy Violation Detected*\n*Resource:* %s/%s (%s)\n*Policy:* %s\n*Drift:*\n```%s```",
+		r.Spec.ViolatedResource.Namespace,
+		r.Spec.ViolatedResource.Name,
+		r.Spec.ViolatedResource.Kind,
+		r.Spec.ProfileName,
+		string(driftDetails),
+	)
+}
+
+func postToSlack(webhook, msg string) error {
+	payload := map[string]string{"text": msg}
+	jsonBody, _ := json.Marshal(payload)
+
+	resp, err := http.Post(webhook, "application/json", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("slack webhook error: %s", resp.Status)
+	}
+
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *PolicyViolationReportReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		// Uncomment the following line adding a pointer to an instance of the controlled resource as an argument
-		// For().
+		For(&v1alpha1.PolicyViolationReport{}).
 		Named("watchdog-policyviolationreport").
 		Complete(r)
 }
