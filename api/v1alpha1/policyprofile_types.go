@@ -25,17 +25,17 @@ import (
 
 // PolicyProfileSpec defines the desired state of PolicyProfile.
 type PolicyProfileSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	Match struct {
+		Kind      string `json:"kind"`
+		Namespace string `json:"namespace"`
+	} `json:"match"`
 
-	// Foo is an example field of PolicyProfile. Edit policyprofile_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	Policy map[string]string `json:"policy,omitempty"`
 }
 
 // PolicyProfileStatus defines the observed state of PolicyProfile.
 type PolicyProfileStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	LastChecked metav1.Time `json:"lastChecked,omitempty"`
 }
 
 // +kubebuilder:object:root=true
