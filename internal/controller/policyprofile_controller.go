@@ -89,6 +89,34 @@ func (r *PolicyProfileReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		if drift := detectDrift(labels, desiredPolicy); len(drift) > 0 {
 			l.Info("Policy drift detected", "resource", item.GetName(), "namespace", item.GetNamespace(), "drift", drift)
 
+			// Deduplication: check if a report for this resource/profile/drift already exists
+			reports := &watchdogv1alpha1.PolicyViolationReportList{}
+			err := r.Client.List(ctx, reports, client.InNamespace(item.GetNamespace()))
+			if err == nil {
+				found := false
+				for _, rep := range reports.Items {
+					if rep.Spec.ViolatedResource.Name == item.GetName() &&
+						rep.Spec.ProfileName == profile.Name {
+						// Compare drift maps
+						if len(rep.Spec.Drift) == len(drift) {
+							match := true
+							for k, v := range drift {
+								if rep.Spec.Drift[k] != v {
+									match = false
+									break
+								}
+							}
+							if match {
+								found = true
+								break
+							}
+						}
+					}
+				}
+				if found {
+					continue // Skip creating duplicate report
+				}
+			}
 			// Emit PolicyViolationReport
 			report := &watchdogv1alpha1.PolicyViolationReport{
 				ObjectMeta: metav1.ObjectMeta{
