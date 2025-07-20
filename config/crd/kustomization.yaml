@@ -3,6 +3,7 @@
 # It should be run by config/default
 resources:
 - bases/watchdog.bizaikube.io_policyprofiles.yaml
+- bases/watchdog.bizaikube.io_policyviolationreports.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

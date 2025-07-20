@@ -22,6 +22,9 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the gokubedog itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
+- policyviolationreport_admin_role.yaml
+- policyviolationreport_editor_role.yaml
+- policyviolationreport_viewer_role.yaml
 - policyprofile_admin_role.yaml
 - policyprofile_editor_role.yaml
 - policyprofile_viewer_role.yaml
