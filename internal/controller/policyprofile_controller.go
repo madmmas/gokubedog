@@ -91,7 +91,7 @@ func (r *PolicyProfileReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 			// Deduplication: check if a report for this resource/profile/drift already exists
 			reports := &watchdogv1alpha1.PolicyViolationReportList{}
-			err := r.Client.List(ctx, reports, client.InNamespace(item.GetNamespace()))
+			err := r.List(ctx, reports, client.InNamespace(item.GetNamespace()))
 			if err == nil {
 				found := false
 				for _, rep := range reports.Items {
@@ -141,7 +141,7 @@ func (r *PolicyProfileReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			}
 
 			l.Info("Creating PolicyViolationReport", "resource", item.GetName(), "namespace", item.GetNamespace())
-			if err := r.Client.Create(ctx, report); err != nil {
+			if err := r.Create(ctx, report); err != nil {
 				l.Error(err, "unable to create PolicyViolationReport")
 			} else {
 				l.Info("Created PolicyViolationReport", "name", report.Name, "namespace", report.Namespace)

@@ -123,7 +123,13 @@ func postToSlack(webhook, msg string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log the error but don't fail the function for body close errors
+			// as the main operation (HTTP request) has already completed
+			logf.Log.Error(closeErr, "failed to close response body")
+		}
+	}()
 
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("slack webhook error: %s", resp.Status)
