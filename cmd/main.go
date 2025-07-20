@@ -39,6 +39,7 @@ import (
 
 	watchdogv1alpha1 "github.com/madmmas/gokubedog/api/v1alpha1"
 	"github.com/madmmas/gokubedog/internal/controller"
+	watchdogcontroller "github.com/madmmas/gokubedog/internal/controller/watchdog"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -207,6 +208,13 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PolicyProfile")
+		os.Exit(1)
+	}
+	if err := (&watchdogcontroller.PolicyViolationReportReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "PolicyViolationReport")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
