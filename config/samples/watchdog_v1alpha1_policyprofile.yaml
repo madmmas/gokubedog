@@ -1,9 +1,11 @@
 apiVersion: watchdog.bizaikube.io/v1alpha1
 kind: PolicyProfile
 metadata:
-  labels:
-    app.kubernetes.io/name: gokubedog
-    app.kubernetes.io/managed-by: kustomize
-  name: policyprofile-sample
+  name: restrict-ingress
 spec:
-  # TODO(user): Add fields here
+  match:
+    kind: NetworkPolicy
+    namespace: prod-*
+  policy:
+    denyIngress: "true"
+    labels.security: "strict"
