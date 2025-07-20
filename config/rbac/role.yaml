@@ -8,6 +8,7 @@ rules:
   - watchdog.bizaikube.io
   resources:
   - policyprofiles
+  - policyviolationreports
   verbs:
   - create
   - delete
@@ -20,12 +21,14 @@ rules:
   - watchdog.bizaikube.io
   resources:
   - policyprofiles/finalizers
+  - policyviolationreports/finalizers
   verbs:
   - update
 - apiGroups:
   - watchdog.bizaikube.io
   resources:
   - policyprofiles/status
+  - policyviolationreports/status
   verbs:
   - get
   - patch

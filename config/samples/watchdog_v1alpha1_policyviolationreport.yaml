@@ -1,0 +1,9 @@
+apiVersion: watchdog.bizaikube.io/v1alpha1
+kind: PolicyViolationReport
+metadata:
+  labels:
+    app.kubernetes.io/name: gokubedog
+    app.kubernetes.io/managed-by: kustomize
+  name: policyviolationreport-sample
+spec:
+  # TODO(user): Add fields here

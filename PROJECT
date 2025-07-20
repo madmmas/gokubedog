@@ -6,6 +6,7 @@ cliVersion: 4.6.0
 domain: bizaikube.io
 layout:
 - go.kubebuilder.io/v4
+multigroup: true
 projectName: gokubedog
 repo: github.com/madmmas/gokubedog
 resources:
@@ -16,6 +17,15 @@ resources:
   domain: bizaikube.io
   group: watchdog
   kind: PolicyProfile
+  path: github.com/madmmas/gokubedog/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: bizaikube.io
+  group: watchdog
+  kind: PolicyViolationReport
   path: github.com/madmmas/gokubedog/api/v1alpha1
   version: v1alpha1
 version: "3"

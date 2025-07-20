@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
@@ -63,7 +63,7 @@ func (r *PolicyProfileReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// Step 1: Derive GroupVersionResource for resource kind
-	// kind := profile.Spec.Match.Kind
+	kind := profile.Spec.Match.Kind
 	nsPattern := profile.Spec.Match.Namespace
 	desiredPolicy := profile.Spec.Policy
 
@@ -74,7 +74,7 @@ func (r *PolicyProfileReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// Step 2: List all matching resources
-	resList, err := r.DynClnt.Resource(gvr).Namespace("").List(ctx, v1.ListOptions{})
+	resList, err := r.DynClnt.Resource(gvr).Namespace("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed listing target resources: %w", err)
 	}
@@ -88,12 +88,69 @@ func (r *PolicyProfileReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		labels := item.GetLabels()
 		if drift := detectDrift(labels, desiredPolicy); len(drift) > 0 {
 			l.Info("Policy drift detected", "resource", item.GetName(), "namespace", item.GetNamespace(), "drift", drift)
-			// TODO: emit PolicyViolationReport or alert
+
+			// Deduplication: check if a report for this resource/profile/drift already exists
+			reports := &watchdogv1alpha1.PolicyViolationReportList{}
+			err := r.List(ctx, reports, client.InNamespace(item.GetNamespace()))
+			if err == nil {
+				found := false
+				for _, rep := range reports.Items {
+					if rep.Spec.ViolatedResource.Name == item.GetName() &&
+						rep.Spec.ProfileName == profile.Name {
+						// Compare drift maps
+						if len(rep.Spec.Drift) == len(drift) {
+							match := true
+							for k, v := range drift {
+								if rep.Spec.Drift[k] != v {
+									match = false
+									break
+								}
+							}
+							if match {
+								found = true
+								break
+							}
+						}
+					}
+				}
+				if found {
+					l.Info("Duplicate report found, skipping creation")
+					continue // Skip creating duplicate report
+				}
+			}
+
+			// Emit PolicyViolationReport
+			report := &watchdogv1alpha1.PolicyViolationReport{
+				ObjectMeta: metav1.ObjectMeta{
+					GenerateName: "violation-",
+					Namespace:    item.GetNamespace(),
+				},
+				Spec: watchdogv1alpha1.PolicyViolationReportSpec{
+					ViolatedResource: struct {
+						Kind      string `json:"kind"`
+						Name      string `json:"name"`
+						Namespace string `json:"namespace"`
+					}{
+						Kind:      kind,
+						Name:      item.GetName(),
+						Namespace: item.GetNamespace(),
+					},
+					ProfileName: profile.Name,
+					Drift:       drift,
+				},
+			}
+
+			l.Info("Creating PolicyViolationReport", "resource", item.GetName(), "namespace", item.GetNamespace())
+			if err := r.Create(ctx, report); err != nil {
+				l.Error(err, "unable to create PolicyViolationReport")
+			} else {
+				l.Info("Created PolicyViolationReport", "name", report.Name, "namespace", report.Namespace)
+			}
 		}
 	}
 
 	// Step 4: Update status
-	profile.Status.LastChecked = v1.Now()
+	profile.Status.LastChecked = metav1.Now()
 	if err := r.Status().Update(ctx, &profile); err != nil {
 		l.Error(err, "unable to update PolicyProfile status")
 	}

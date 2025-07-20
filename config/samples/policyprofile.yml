@@ -1,0 +1,11 @@
+apiVersion: watchdog.bizaikube.io/v1alpha1
+kind: PolicyProfile
+metadata:
+  name: test-profile
+  namespace: default
+spec:
+  match:
+    kind: NetworkPolicy
+    namespace: default
+  policy:
+    foo: bar
