@@ -23,19 +23,17 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// PolicyViolationReportSpec defines the desired state of PolicyViolationReport.
-type PolicyViolationReportSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of PolicyViolationReport. Edit policyviolationreport_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+type ViolatedResourceSpec struct {
+	Kind      string `json:"kind"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
 }
 
-// PolicyViolationReportStatus defines the observed state of PolicyViolationReport.
-type PolicyViolationReportStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+// PolicyViolationReportSpec defines the desired state of PolicyViolationReport.
+type PolicyViolationReportSpec struct {
+	ViolatedResource ViolatedResourceSpec `json:"violatedResource"`
+	ProfileName      string               `json:"profileName"`
+	Drift            map[string]string    `json:"drift"`
 }
 
 // +kubebuilder:object:root=true
@@ -46,8 +44,7 @@ type PolicyViolationReport struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   PolicyViolationReportSpec   `json:"spec,omitempty"`
-	Status PolicyViolationReportStatus `json:"status,omitempty"`
+	Spec PolicyViolationReportSpec `json:"spec,omitempty"`
 }
 
 // +kubebuilder:object:root=true
