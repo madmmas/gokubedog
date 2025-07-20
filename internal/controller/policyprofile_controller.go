@@ -18,8 +18,14 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"time"
 
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -30,7 +36,8 @@ import (
 // PolicyProfileReconciler reconciles a PolicyProfile object
 type PolicyProfileReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme  *runtime.Scheme
+	DynClnt dynamic.Interface
 }
 
 // +kubebuilder:rbac:groups=watchdog.bizaikube.io,resources=policyprofiles,verbs=get;list;watch;create;update;patch;delete
@@ -47,15 +54,81 @@ type PolicyProfileReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
 func (r *PolicyProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
+	l := logf.FromContext(ctx)
 
-	// TODO(user): your logic here
+	var profile watchdogv1alpha1.PolicyProfile
+	if err := r.Get(ctx, req.NamespacedName, &profile); err != nil {
+		l.Error(err, "unable to fetch PolicyProfile")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
 
-	return ctrl.Result{}, nil
+	// Step 1: Derive GroupVersionResource for resource kind
+	// kind := profile.Spec.Match.Kind
+	nsPattern := profile.Spec.Match.Namespace
+	desiredPolicy := profile.Spec.Policy
+
+	gvr := schema.GroupVersionResource{
+		Group:    "networking.k8s.io",
+		Version:  "v1",
+		Resource: "networkpolicies", // TODO: map kind → resource name dynamically
+	}
+
+	// Step 2: List all matching resources
+	resList, err := r.DynClnt.Resource(gvr).Namespace("").List(ctx, v1.ListOptions{})
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed listing target resources: %w", err)
+	}
+
+	for _, item := range resList.Items {
+		if !matchNamespace(item.GetNamespace(), nsPattern) {
+			continue
+		}
+
+		// Step 3: Drift detection
+		labels := item.GetLabels()
+		if drift := detectDrift(labels, desiredPolicy); len(drift) > 0 {
+			l.Info("Policy drift detected", "resource", item.GetName(), "namespace", item.GetNamespace(), "drift", drift)
+			// TODO: emit PolicyViolationReport or alert
+		}
+	}
+
+	// Step 4: Update status
+	profile.Status.LastChecked = v1.Now()
+	if err := r.Status().Update(ctx, &profile); err != nil {
+		l.Error(err, "unable to update PolicyProfile status")
+	}
+
+	return ctrl.Result{RequeueAfter: 1 * time.Hour}, nil
+}
+
+// Simple string glob match (basic wildcard support)
+func matchNamespace(actual, pattern string) bool {
+	if strings.HasSuffix(pattern, "*") {
+		return strings.HasPrefix(actual, strings.TrimSuffix(pattern, "*"))
+	}
+	return actual == pattern
+}
+
+// Compare desired policy with live labels (can expand later)
+func detectDrift(actualLabels map[string]string, desired map[string]string) map[string]string {
+	drift := map[string]string{}
+	for k, v := range desired {
+		actualVal, exists := actualLabels[k]
+		if !exists || actualVal != v {
+			drift[k] = fmt.Sprintf("Expected: %s, Got: %s", v, actualVal)
+		}
+	}
+	return drift
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *PolicyProfileReconciler) SetupWithManager(mgr ctrl.Manager) error {
+
+	r.DynClnt = dynamic.NewForConfigOrDie(mgr.GetConfig())
+	// return ctrl.NewControllerManagedBy(mgr).
+	//     For(&watchdogv1alpha1.PolicyProfile{}).
+	//     Complete(r)
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&watchdogv1alpha1.PolicyProfile{}).
 		Named("policyprofile").
